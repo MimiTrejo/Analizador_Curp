@@ -26,16 +26,30 @@ func main() {
 		if r.Method == "POST" {
 
 			persona := Persona{
-				Nombre:          strings.ToUpper(r.FormValue("nombre")),
-				ApellidoPaterno: strings.ToUpper(r.FormValue("apellidoP")),
-				ApellidoMaterno: strings.ToUpper(r.FormValue("apellidoM")),
+				Nombre:          strings.ToUpper(strings.TrimSpace(r.FormValue("nombre"))),
+				ApellidoPaterno: strings.ToUpper(strings.TrimSpace(r.FormValue("apellidoP"))),
+				ApellidoMaterno: strings.ToUpper(strings.TrimSpace(r.FormValue("apellidoM"))),
 				FechaNacimiento: r.FormValue("fecha"),
 				Sexo:            r.FormValue("sexo"),
 				Entidad:         r.FormValue("entidad"),
 			}
 
-			curp := generarCURP(persona)
-			resultado = "<h3 style='color:green'>CURP Generada: " + curp + "</h3>"
+			// 🔐 Validar nombres
+			if !nombreValido(persona.Nombre) ||
+				!nombreValido(persona.ApellidoPaterno) ||
+				!nombreValido(persona.ApellidoMaterno) {
+
+				resultado = "<h3 style='color:red'>Nombre y apellidos deben tener mínimo 3 letras y solo contener letras.</h3>"
+
+			} else if !fechaValida(persona.FechaNacimiento) {
+
+				resultado = "<h3 style='color:red'>Fecha inválida (máximo 120 años o fecha futura).</h3>"
+
+			} else {
+
+				curp := generarCURP(persona)
+				resultado = "<h3 style='color:green'>CURP Generada: " + curp + "</h3>"
+			}
 		}
 
 		fmt.Fprintf(w, `
@@ -71,14 +85,32 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
+func nombreValido(s string) bool {
+
+	if len([]rune(s)) < 3 {
+		return false
+	}
+
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func generarCURP(p Persona) string {
 
-	fecha, _ := time.Parse("2006-01-02", p.FechaNacimiento)
+	fecha, err := time.Parse("2006-01-02", p.FechaNacimiento)
+	if err != nil {
+		return ""
+	}
 
-	curp := string(p.ApellidoPaterno[0])
+	curp := string([]rune(p.ApellidoPaterno)[0])
 	curp += primeraVocalInterna(p.ApellidoPaterno)
-	curp += string(p.ApellidoMaterno[0])
-	curp += string(p.Nombre[0])
+	curp += string([]rune(p.ApellidoMaterno)[0])
+	curp += string([]rune(p.Nombre)[0])
 
 	curp += fecha.Format("060102")
 
@@ -94,19 +126,42 @@ func generarCURP(p Persona) string {
 	return curp
 }
 
+func fechaValida(fechaStr string) bool {
+
+	fecha, err := time.Parse("2006-01-02", fechaStr)
+	if err != nil {
+		return false
+	}
+
+	hoy := time.Now().UTC()
+	hoy = time.Date(hoy.Year(), hoy.Month(), hoy.Day(), 0, 0, 0, 0, time.UTC)
+
+	if fecha.After(hoy) {
+		return false
+	}
+
+	if fecha.Before(hoy.AddDate(-120, 0, 0)) {
+		return false
+	}
+
+	return true
+}
+
 func primeraVocalInterna(s string) string {
-	for i := 1; i < len(s); i++ {
-		if strings.ContainsRune("AEIOU", rune(s[i])) {
-			return string(s[i])
+	runes := []rune(s)
+	for i := 1; i < len(runes); i++ {
+		if strings.ContainsRune("AEIOU", runes[i]) {
+			return string(runes[i])
 		}
 	}
 	return "X"
 }
 
 func primeraConsonanteInterna(s string) string {
-	for i := 1; i < len(s); i++ {
-		if unicode.IsLetter(rune(s[i])) && !strings.ContainsRune("AEIOU", rune(s[i])) {
-			return string(s[i])
+	runes := []rune(s)
+	for i := 1; i < len(runes); i++ {
+		if unicode.IsLetter(runes[i]) && !strings.ContainsRune("AEIOU", runes[i]) {
+			return string(runes[i])
 		}
 	}
 	return "X"
